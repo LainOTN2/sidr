@@ -22,6 +22,7 @@ pub enum ReportFormat {
 pub enum ReportOutput {
     ToFile,
     ToStdout,
+    ToDatabase,
 }
 
 #[derive(Debug, PartialEq)]
@@ -188,6 +189,9 @@ impl ReportJson {
                 report_suffix,
                 values: RefCell::new(Vec::new()),
             }),
+            ReportOutput::ToDatabase => Err(SimpleError::new(
+                "ReportOutput::ToDatabase is not supported for JSON format",
+            ))?,
         }
     }
 
@@ -323,6 +327,9 @@ impl ReportCsv {
                 first_record: Cell::new(true),
                 values: RefCell::new(Vec::new()),
             }),
+            ReportOutput::ToDatabase => Err(SimpleError::new(
+                "ReportOutput::ToDatabase is not supported for CSV format",
+            ))?,
         }
     }
 
@@ -489,17 +496,17 @@ mod tests {
             }
         }
         let data = std::fs::read_to_string(p).unwrap();
-        let expected = r#"{"int_field":0,"str_field":"string0_with_escapes_here1\"here2\\"}
-{"int_field":1}
-{"str_field":"string2"}
-{"int_field":3}
-{"str_field":"string4"}
-{"int_field":5}
-{"str_field":"string6"}
-{"int_field":7}
-{"str_field":"string8"}
+        let expected = r#"{"int_field":0,"str_field":"string0_with_escapes_here1\"here2\\"},
+{"int_field":1},
+{"str_field":"string2"},
+{"int_field":3},
+{"str_field":"string4"},
+{"int_field":5},
+{"str_field":"string6"},
+{"int_field":7},
+{"str_field":"string8"},
 {"int_field":9}
-"#;
+]"#;
         assert_eq!(data, expected);
         std::fs::remove_file(p).unwrap();
     }
