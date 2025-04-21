@@ -137,7 +137,7 @@ fn write_record_to_report(
     idToProp: &HashMap<i64, (String, i64)>,
     report: &mut dyn Report,
 ) {
-    report.create_new_row();
+    report.create_new_row(false);
     report.insert_int_val("WorkId", workId as u64);
 
     for (col, val) in record.iter().sorted() {

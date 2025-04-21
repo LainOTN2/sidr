@@ -172,6 +172,10 @@ pub fn ese_generate_report(
         Some(edb_database_state),
     )?;
 
+    file_rep.start_file();
+    ie_rep.start_file();
+    act_rep.start_file();
+
     let mut h = HashMap::new();
     loop {
         let mut workId: u32 = 0;
@@ -209,6 +213,8 @@ pub fn ese_generate_report(
             break;
         }
     }
+    
+
     if report_prod.is_db_dirty(Some(edb_database_state)) {
         if report_prod.get_report_type() == ReportOutput::ToStdout {
             eprintln!("WARNING: The database state is not clean");
@@ -226,7 +232,7 @@ pub fn ese_generate_report(
 
 // File Report
 fn ese_dump_file_record(r: &mut dyn Report, workId: u32, h: &HashMap<String, Vec<u8>>) {
-    r.create_new_row();
+    r.create_new_row(false);
     r.insert_int_val("WorkId", workId as u64);
     for (col, val) in h.iter().sorted() {
         let csp = column_string_part(col);
@@ -300,7 +306,7 @@ fn ese_IE_history_record(r: &mut dyn Report, workId: u32, h: &HashMap<String, Ve
         }
     }
 
-    r.create_new_row();
+    r.create_new_row(false);
     r.insert_int_val("WorkId", workId as u64);
     for (col, val) in h.iter().sorted() {
         let csp = column_string_part(col);
@@ -348,7 +354,7 @@ fn ese_activity_history_record(
             return false;
         }
     }
-    r.create_new_row();
+    r.create_new_row(false);
     r.insert_int_val("WorkId", workId as u64);
     for (col, val) in h.iter().sorted() {
         let csp = column_string_part(col);

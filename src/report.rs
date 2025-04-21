@@ -148,10 +148,12 @@ impl ReportProducer {
 
 pub trait Report {
     fn footer(&mut self) {}
-    fn create_new_row(&mut self);
+    fn create_new_row(&mut self, f: bool);
     fn insert_str_val(&self, f: &str, s: String);
     fn insert_int_val(&self, f: &str, n: u64);
     fn set_field(&self, _: &str) {} // used in csv to generate header
+    fn start_file(&mut self) {}
+    fn end_file(&mut self) {}
     fn is_some_val_in_record(&self) -> bool;
 }
 
@@ -189,11 +191,25 @@ impl ReportJson {
         }
     }
 
+    fn start_file(&mut self)
+    {
+        let handle = self.f.as_mut();
+        handle.write_all(b"[\n").unwrap();
+        handle.flush().unwrap();
+    }
+
+    fn end_file(&mut self)
+    {
+        let handle = self.f.as_mut();
+        handle.write_all(b"]").unwrap();
+        handle.flush().unwrap();
+    }
+
     fn escape(s: String) -> String {
         json_escape(&s)
     }
 
-    pub fn write_values(&mut self) {
+    pub fn write_values(&mut self, f: bool) {
         let mut values = self.values.borrow_mut();
         let len = values.len();
         let handle = self.f.as_mut();
@@ -220,7 +236,12 @@ impl ReportJson {
             }
         }
         if len > 0 {
-            handle.write_all(b"}\n").unwrap();
+            if f{
+                handle.write_all(b"}\n").unwrap();
+            }
+            else {
+                handle.write_all(b"},\n").unwrap();
+            }
             values.clear();
         }
         handle.flush().unwrap();
@@ -229,12 +250,12 @@ impl ReportJson {
 
 impl Report for ReportJson {
     fn footer(&mut self) {
-        self.create_new_row();
+        self.create_new_row(true);
     }
 
-    fn create_new_row(&mut self) {
+    fn create_new_row(&mut self, f: bool) {
         if !self.values.borrow().is_empty() {
-            self.write_values();
+            self.write_values(f);
         }
     }
 
@@ -251,11 +272,20 @@ impl Report for ReportJson {
     fn is_some_val_in_record(&self) -> bool {
         !self.values.borrow().is_empty()
     }
+
+    fn start_file(&mut self) {
+        self.start_file();
+    }
+
+    fn end_file(&mut self) {
+        self.end_file();
+    }
 }
 
 impl Drop for ReportJson {
     fn drop(&mut self) {
         self.footer();
+        self.end_file();
     }
 }
 
@@ -356,10 +386,11 @@ impl ReportCsv {
 
 impl Report for ReportCsv {
     fn footer(&mut self) {
-        self.create_new_row();
+        self.create_new_row(true);
+        self.end_file();
     }
 
-    fn create_new_row(&mut self) {
+    fn create_new_row(&mut self, _f: bool) {
         // at least 1 value was recorded?
         if self.is_some_val_in_record() {
             if self.first_record.get() {
@@ -415,7 +446,7 @@ mod tests {
             r.insert_int_val("int_field", 0);
             r.insert_str_val("str_field", "string0".into());
             for i in 1..10 {
-                r.create_new_row();
+                r.create_new_row(false);
                 if i % 2 == 0 {
                     r.insert_str_val("str_field", format!("string{}", i));
                 } else {
@@ -449,7 +480,7 @@ mod tests {
             r.insert_int_val("int_field", 0);
             r.insert_str_val("str_field", "string0_with_escapes_here1\"here2\\".into());
             for i in 1..10 {
-                r.create_new_row();
+                r.create_new_row(false);
                 if i % 2 == 0 {
                     r.insert_str_val("str_field", format!("string{}", i));
                 } else {

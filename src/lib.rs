@@ -561,8 +561,8 @@ struct ReportColumn {
 }
 
 impl<R: Report + ?Sized> Report for Box<R> {
-    fn create_new_row(&mut self) {
-        (**self).create_new_row()
+    fn create_new_row(&mut self, f: bool) {
+        (**self).create_new_row(f)
     }
 
     fn insert_str_val(&self, f: &str, s: String) {
@@ -815,7 +815,7 @@ pub fn do_reports(
                 }
             }
 
-            report.reporter.create_new_row();
+            report.reporter.create_new_row(false);
             debug!("flag {} -> true", report.title);
             context
                 .set_value(report.title.clone(), Value::Boolean(true))
