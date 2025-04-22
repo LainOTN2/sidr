@@ -22,7 +22,6 @@ pub mod mssql;
 use crate::ese::*;
 use crate::report::*;
 use crate::sqlite::*;
-use crate::mssql::*;
 
 
 fn dump(
@@ -134,6 +133,10 @@ struct Cli {
     /// MSSQL instance connection string (required if --report-type is to-database)
     #[arg(short, long, requires_if("to-database", "report_type"), value_name = "INSTANCE")]
     instance: Option<String>,
+
+    /// Name of the database where the tables are (required if --report-type is to-database)
+    #[arg(short, long, requires_if("to-database", "report_type"), value_name = "DATABASE")]
+    database: Option<String>,
 }
 
 fn main() -> Result<(), SimpleError> {
@@ -144,19 +147,8 @@ fn main() -> Result<(), SimpleError> {
         None => std::env::current_dir().map_err(|e| SimpleError::new(format!("{e}")))?,
     };
 
-    match cli.report_type {
-        ReportOutput::ToDatabase => {
-            if cli.instance.is_none() {
-                return Err(SimpleError::new(
-                    "MSSQL instance connection string is required for database output.",
-                ));
-            }
-            insert_report(&cli.indir, &cli.instance.unwrap())?;
-        }
-        _=> { 
-            write_reports(&output_dir, cli.format, cli.report_type, &cli.indir)?;
-        }
-    }
+
+    write_reports(&output_dir, cli.format, cli.report_type, &cli.indir, cli.instance, cli.database)?;
 
     Ok(())
 }
@@ -166,31 +158,20 @@ fn write_reports(
     format: ReportFormat,
     report_type: ReportOutput,
     input_dir: &PathBuf,
+    instance: Option<String>,
+    database: Option<String>,
 ) -> Result<(), SimpleError> {
-    let rep_producer = ReportProducer::new(rep_dir.as_path(), format, report_type);
+    let rep_producer = ReportProducer::new(rep_dir.as_path(), format, report_type, instance, database);
     let mut status_logger: Box<dyn std::io::Write> = match report_type {
         ReportOutput::ToStdout => Box::new(std::io::sink()),
         ReportOutput::ToFile => Box::new(std::io::stdout()),
-        ReportOutput::ToDatabase => todo!(),
+        ReportOutput::ToDatabase => Box::new(std::io::stdout()),
     };
     dump(&input_dir, &rep_producer, &mut status_logger)?;
     Ok(())
 }
 
-fn insert_report(input_dir: &PathBuf, instance: &str) -> Result<(), SimpleError> {
-    /*
-    let environment = Environment::new().map_err(|e| SimpleError::new(format!("ODBC Error: {e}")))?;
 
-    // Connect to the MSSQL instance
-    let connection_string = format!("Driver={{ODBC Driver 17 for SQL Server}};Server={};Trusted_Connection=yes;", instance);
-    let connection = environment
-        .connect_with_connection_string(&connection_string)
-        .map_err(|e| SimpleError::new(format!("Failed to connect to MSSQL instance: {e}")))?;
-
-    println!("Successfully connected to MSSQL instance: {}", instance);
-    */
-    Ok(())
-}
 #[test]
 fn warn_dirty() {
     use ese_parser_lib::ese_parser::EseParser;

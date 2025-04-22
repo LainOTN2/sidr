@@ -11,11 +11,13 @@ use std::ops::IndexMut;
 use std::path::{Path, PathBuf};
 
 use crate::utils::*;
+use crate::mssql::*;
 
 #[derive(Clone, Debug, ValueEnum)]
 pub enum ReportFormat {
     Json,
     Csv,
+    NoFormat,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, ValueEnum)]
@@ -66,10 +68,12 @@ pub struct ReportProducer {
     dir: PathBuf,
     format: ReportFormat,
     report_type: ReportOutput,
+    instance: Option<String>,
+    database: Option<String>,
 }
 
 impl ReportProducer {
-    pub fn new(dir: &Path, format: ReportFormat, report_type: ReportOutput) -> Self {
+    pub fn new(dir: &Path, format: ReportFormat, report_type: ReportOutput, instance: Option<String>, database: Option<String>) -> Self {
         if !dir.exists() {
             std::fs::create_dir(dir)
                 .unwrap_or_else(|_| panic!("Can't create directory \"{}\"", dir.to_string_lossy()));
@@ -78,6 +82,8 @@ impl ReportProducer {
             dir: dir.to_path_buf(),
             format,
             report_type,
+            instance: instance,
+            database: database,
         }
     }
 
@@ -125,6 +131,7 @@ impl ReportProducer {
         let ext = match self.format {
             ReportFormat::Json => "json",
             ReportFormat::Csv => "csv",
+            ReportFormat::NoFormat => "",
         };
         let date_time_now: DateTime<Utc> = Utc::now();
         let path = self.get_path_db_status(
@@ -134,7 +141,31 @@ impl ReportProducer {
             ext,
             edb_database_state,
         );
+        let table_name = format!("{}_{}_{}", recovered_hostname, report_suffix,date_time_now.format("%Y%m%d_%H%M%S"));
         let report_suffix = ReportSuffix::get_match(report_suffix);
+       
+        let rep: Box<dyn Report> = if ReportOutput::ToDatabase == self.report_type {
+            ReportMSSQL::new(
+                        table_name.as_str(),
+                        self.instance.as_ref().unwrap(),
+                        self.database.as_ref().unwrap(),
+                        report_suffix,
+                    )
+                    .map(Box::new)?
+        } else {
+            match self.format{
+                ReportFormat::Json => {
+                    ReportJson::new(&path, self.report_type, report_suffix).map(Box::new)?
+                }
+                ReportFormat::Csv => {
+                    ReportCsv::new(&path, self.report_type, report_suffix).map(Box::new)?
+                }
+                ReportFormat::NoFormat => {
+                    return Err(SimpleError::new("NoFormat is not supported"));
+                }
+            }
+        };
+        /*
         let rep: Box<dyn Report> = match self.format {
             ReportFormat::Json => {
                 ReportJson::new(&path, self.report_type, report_suffix).map(Box::new)?
@@ -142,7 +173,20 @@ impl ReportProducer {
             ReportFormat::Csv => {
                 ReportCsv::new(&path, self.report_type, report_suffix).map(Box::new)?
             }
-        };
+            ReportFormat::NoFormat => {
+                if ReportOutput::ToDatabase == self.report_type {
+                    ReportMSSQL::new(
+                        table_name.as_str(),
+                        self.instance.as_ref().unwrap(),
+                        self.database.as_ref().unwrap(),
+                    )
+                    .map(Box::new)?
+                } else {
+                    return Err(SimpleError::new("NoFormat is not supported"));
+                }
+
+            }
+        };*/
         Ok((path, rep))
     }
 }

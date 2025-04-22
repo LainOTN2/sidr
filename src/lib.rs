@@ -3,6 +3,7 @@
 pub mod report;
 #[allow(non_camel_case_types)]
 pub mod utils;
+pub mod mssql;
 
 use crate::utils::column_string_part;
 use ::function_name::named;
@@ -605,7 +606,7 @@ pub fn do_reports(
         OutputType::ToFile => ReportOutput::ToFile,
     };
 
-    let rep_factory = ReportProducer::new(cfg.output_dir.as_ref(), report_format, report_type);
+    let rep_factory = ReportProducer::new(cfg.output_dir.as_ref(), report_format, report_type, None, None);
     let mut cached = HashMap::<String, String>::new();
 
     for report in &cfg.reports {
