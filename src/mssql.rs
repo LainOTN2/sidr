@@ -3,6 +3,8 @@ use std::sync::Mutex;
 use std::cell::RefCell;
 use std::cell::Cell;
 use simple_error::SimpleError;
+use regex::Regex;
+
 
 use crate::report::*;
 
@@ -41,10 +43,52 @@ impl<'env> ReportMSSQL<'env> {
         })
     }
 
+     pub fn get_latest_odbc_driver() -> Result<String, SimpleError> {
+        // Create a new ODBC environment
+        let environment = Environment::new().map_err(|e| SimpleError::new(format!("ODBC Error: {e}")))?;
+
+        // Regex to match ODBC driver names and extract the version number
+        let driver_regex = Regex::new(r"ODBC Driver (\d+) for SQL Server")
+            .map_err(|e| SimpleError::new(format!("Failed to compile regex: {e}")))?;
+
+        // Find the latest driver version
+        let mut latest_version = 0;
+        let mut latest_driver = None;
+        
+       for driver_info in environment
+            .drivers()
+            .map_err(|e| SimpleError::new(format!("Failed to retrieve ODBC drivers: {e}")))? {
+            let driver_name = driver_info.description; // Use the name() method to get the driver name
+            if let Some(captures) = driver_regex.captures(&driver_name) {
+                if let Some(version_match) = captures.get(1) {
+                    if let Ok(version) = version_match.as_str().parse::<u32>() {
+                        if version > latest_version {
+                            latest_version = version;
+                            latest_driver = Some(driver_name.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Return the latest driver or print an error if none is found
+        if let Some(driver) = latest_driver {
+            println!("Found latest ODBC driver: {}", driver);
+            Ok(format!("Driver={{{}}};", driver))
+        } else {
+            eprintln!(
+                "No compatible ODBC Driver for SQL Server found. Please download the latest driver from: \
+                https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server"
+            );
+            Err(SimpleError::new("No compatible ODBC Driver for SQL Server found"))
+        }
+    }
     fn connect_to_database(&self) -> Result<(), SimpleError> {
+
+        let driver = Self::get_latest_odbc_driver()?;
         let connection_string = format!(
-            "Driver={{ODBC Driver 17 for SQL Server}};Server={};Database={};Trusted_Connection=yes;",
-            self.instance, self.database
+            "{}Server={};Database={};Trusted_Connection=yes;TrustServerCertificate=yes;",
+            driver, self.instance, self.database
         );
 
         // Create a connection and extend its lifetime to 'static
@@ -280,7 +324,7 @@ impl<'env> ReportMSSQL<'env> {
 
             // Construct the full query
             let query = format!(
-                "INSERT INTO {} ({}) VALUES {}",
+                "INSERT INTO [{}] ({}) VALUES {}",
                 self.table_name,
                 column_list.join(", "),
                 query_builder

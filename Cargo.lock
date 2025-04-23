@@ -1599,6 +1599,7 @@ dependencies = [
  "odbc-api",
  "once_cell",
  "owning_ref",
+ "regex",
  "serde",
  "serde_json",
  "serde_yaml",
