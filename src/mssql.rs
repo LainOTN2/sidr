@@ -1,6 +1,7 @@
 use odbc_api::{Environment, Connection};
 use std::sync::Mutex;
 use std::cell::RefCell;
+use std::cell::Cell;
 use simple_error::SimpleError;
 
 use crate::report::*;
@@ -13,6 +14,8 @@ pub struct ReportMSSQL<'env> {
     environment: Environment, // Reference to the Environment object
     connection: Mutex<Option<Connection<'env>>>, // Mutex to manage the connection
     values: RefCell<Vec<(String /*field*/, String /*value*/)>>, // Stores the values to be inserted
+    query_builder: RefCell<String>, // Accumulates the INSERT statements
+    row_counter: Cell<usize>, // Tracks the number of rows since the last flush
 }
 
 impl<'env> ReportMSSQL<'env> {
@@ -33,6 +36,8 @@ impl<'env> ReportMSSQL<'env> {
             environment, // Store a reference to the Environment object
             connection: Mutex::new(None), // Connection will be established in `start_file`
             values: RefCell::new(Vec::new()),
+            query_builder: RefCell::new(String::new()),
+            row_counter: Cell::new(0),
         })
     }
 
@@ -152,41 +157,151 @@ impl<'env> ReportMSSQL<'env> {
     }
 
     pub fn write_values_to_db(&self) -> Result<(), SimpleError> {
-        let guard = self.connection.lock().unwrap(); // Get the MutexGuard
-        let connection = guard
-            .as_ref()
-            .ok_or_else(|| SimpleError::new("No active database connection"))?;
-
         let values = self.values.borrow();
 
-        // Prepare the column names and values
-        let mut columns = Vec::new();
-        let mut values_list = Vec::new();
+        // Define the column order based on the report suffix
+        let column_order = match self.report_suffix {
+            Some(ReportSuffix::FileReport) => vec![
+                "WorkId",
+                "System_ComputerName",
+                "System_ItemPathDisplay",
+                "System_DateModified",
+                "System_DateCreated",
+                "System_DateAccessed",
+                "System_Size",
+                "System_FileOwner",
+                "System_Search_AutoSummary",
+                "System_Search_GatherTime",
+                "System_ItemType",
+            ],
+            Some(ReportSuffix::ActivityHistory) => vec![
+                "WorkId",
+                "System_ComputerName",
+                "System_ItemPathDisplay",
+                "System_DateModified",
+                "System_DateCreated",
+                "System_DateAccessed",
+                "System_Size",
+                "System_FileOwner",
+                "System_Search_AutoSummary",
+                "System_Search_GatherTime",
+                "System_ItemType",
+            ],
+            Some(ReportSuffix::InternetHistory) => vec![
+                "WorkId",
+                "System_ItemUrl",
+                "System_ItemDate",
+                "System_Link_TargetUrl",
+                "System_Search_GatherTime",
+                "System_Title",
+                "System_Link_DateVisited",
+            ],
+            _ => return Err(SimpleError::new("Invalid report suffix")),
+        };
 
+        // Map the provided values to their corresponding columns
+        let mut column_values = vec!["NULL".to_string(); column_order.len()];
         for (field, value) in values.iter() {
-            columns.push(format!("[{}]", field)); // Add column name with brackets
-            values_list.push(format!("'{}'", value.replace("'", "''"))); // Escape single quotes in values
+            if let Some(index) = column_order.iter().position(|&col| col == field) {
+                column_values[index] = format!("'{}'", value.replace("'", "''")); // Escape single quotes
+            }
         }
 
-        // Combine columns and values into a single INSERT statement
-        let query = format!(
-            "INSERT INTO {} ({}) VALUES ({});",
-            self.table_name,
-            columns.join(", "),
-            values_list.join(", ")
-        );
+        // Combine the column values into a single VALUES clause
+        let values_clause = format!("({})", column_values.join(", "));
 
-        //println!("Executing query: {}", query);
-        // Execute the query
-        connection
-            .execute(&query, ())
-            .map_err(|e| SimpleError::new(format!("Failed to execute query: {e}")))?;
+        // Append the VALUES clause to the query builder
+        self.query_builder.borrow_mut().push_str(&values_clause);
+        self.query_builder.borrow_mut().push_str(", "); // Add a comma for the next VALUES clause
 
-        
+        // Increment the row counter
+        let current_count = self.row_counter.get() + 1;
+        self.row_counter.set(current_count);
+
+        // Flush the query builder if the row counter reaches 25
+        if current_count >= 25 {
+            self.flush_query_builder()?;
+            self.row_counter.set(0); // Reset the counter
+        }
 
         Ok(())
     }
 
+    pub fn flush_query_builder(&self) -> Result<(), SimpleError> {
+        let mut query_builder = self.query_builder.borrow_mut();
+
+        // Remove the trailing comma and space
+        if query_builder.ends_with(", ") {
+            let len = query_builder.len(); // Get the length first
+            query_builder.truncate(len - 2); // Then truncate
+        }
+
+        // Execute the accumulated query
+        if !query_builder.is_empty() {
+            // Define the column list based on the report suffix
+            let column_list = match self.report_suffix {
+                Some(ReportSuffix::FileReport) => vec![
+                    "[WorkId]",
+                    "[System_ComputerName]",
+                    "[System_ItemPathDisplay]",
+                    "[System_DateModified]",
+                    "[System_DateCreated]",
+                    "[System_DateAccessed]",
+                    "[System_Size]",
+                    "[System_FileOwner]",
+                    "[System_Search_AutoSummary]",
+                    "[System_Search_GatherTime]",
+                    "[System_ItemType]",
+                ],
+                Some(ReportSuffix::ActivityHistory) => vec![
+                    "[WorkId]",
+                    "[System_ComputerName]",
+                    "[System_ItemPathDisplay]",
+                    "[System_DateModified]",
+                    "[System_DateCreated]",
+                    "[System_DateAccessed]",
+                    "[System_Size]",
+                    "[System_FileOwner]",
+                    "[System_Search_AutoSummary]",
+                    "[System_Search_GatherTime]",
+                    "[System_ItemType]",
+                ],
+                Some(ReportSuffix::InternetHistory) => vec![
+                    "[WorkId]",
+                    "[System_ItemUrl]",
+                    "[System_ItemDate]",
+                    "[System_Link_TargetUrl]",
+                    "[System_Search_GatherTime]",
+                    "[System_Title]",
+                    "[System_Link_DateVisited]",
+                ],
+                _ => return Err(SimpleError::new("Invalid report suffix")),
+            };
+
+            // Construct the full query
+            let query = format!(
+                "INSERT INTO {} ({}) VALUES {}",
+                self.table_name,
+                column_list.join(", "),
+                query_builder
+            );
+
+            //println!("Executing batch query: {}", query);
+
+            let guard = self.connection.lock().unwrap(); // Get the MutexGuard
+            let connection = guard
+                .as_ref()
+                .ok_or_else(|| SimpleError::new("No active database connection"))?;
+            connection
+                .execute(&query, ())
+                .map_err(|e| SimpleError::new(format!("Failed to execute query: {e}")))?;
+
+            // Clear the query builder
+            query_builder.clear();
+        }
+
+        Ok(())
+    }
 }
 
 impl<'env> Report for ReportMSSQL<'env> {
@@ -228,7 +343,11 @@ impl<'env> Report for ReportMSSQL<'env> {
 
 impl<'env> Drop for ReportMSSQL<'env> {
     fn drop(&mut self) {
-        self.footer();
+        // Perform a final flush
+        if let Err(e) = self.flush_query_builder() {
+            eprintln!("Failed to flush query builder during drop: {}", e);
+        }
+
         // Lock the connection mutex
         let mut guard = self.connection.lock().unwrap();
 
