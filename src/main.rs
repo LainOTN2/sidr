@@ -111,7 +111,21 @@ fn is_valid_file(p: &PathBuf) -> bool {
 /// HOSTNAME_ReportName_DateTime.json|csv.
 ///
 /// HOSTNAME is extracted from the database.
-
+///
+/// This fork by LainOTN2, adds the ability to output to a MSSQL database.
+///
+/// The database must be created beforehand.
+/// To export to a MSSQL database use the --report-type to-database option. ie:
+/// sidr -r to-database -i <MSSQL_INSTANCE> -d <DATABASE_NAME> C:\test
+/// This will create three tables:
+///
+/// DESKTOP-12345_File_Report_20230307_015244
+///
+/// DESKTOP-12345_Internet_History_Report_20230307_015317
+///
+/// DESKTOP-12345_Activity_History_Report_20230307_015317
+///
+/// This version also changes the ouput of the json report to a json array [] to be more easely exportable to SQL databases.
 #[derive(Parser)]
 #[command(author, version, about, long_about)]
 struct Cli {
@@ -134,7 +148,7 @@ struct Cli {
     #[arg(short, long, requires_if("to-database", "report_type"), value_name = "INSTANCE")]
     instance: Option<String>,
 
-    /// Name of the database where the tables are (required if --report-type is to-database)
+    /// Name of the database where the tables will be created (required if --report-type is to-database)
     #[arg(short, long, requires_if("to-database", "report_type"), value_name = "DATABASE")]
     database: Option<String>,
 }

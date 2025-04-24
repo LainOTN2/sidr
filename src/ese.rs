@@ -172,10 +172,6 @@ pub fn ese_generate_report(
         Some(edb_database_state),
     )?;
 
-    file_rep.start_file();
-    ie_rep.start_file();
-    act_rep.start_file();
-
     let mut h = HashMap::new();
     loop {
         let mut workId: u32 = 0;

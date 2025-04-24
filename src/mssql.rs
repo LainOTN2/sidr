@@ -30,7 +30,8 @@ impl<'env> ReportMSSQL<'env> {
 
     // Create a new ODBC environment
     let environment = Environment::new().map_err(|e| SimpleError::new(format!("ODBC Error: {e}")))?;
-        Ok(ReportMSSQL {
+
+    let mut report = ReportMSSQL {
             instance: instance.to_string(),
             database: database.to_string(),
             table_name: table_name.to_string(),
@@ -40,7 +41,10 @@ impl<'env> ReportMSSQL<'env> {
             values: RefCell::new(Vec::new()),
             query_builder: RefCell::new(String::new()),
             row_counter: Cell::new(0),
-        })
+        };
+        
+        report.start_file();
+        Ok(report)
     }
 
      pub fn get_latest_odbc_driver() -> Result<String, SimpleError> {

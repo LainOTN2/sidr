@@ -92,9 +92,6 @@ pub fn sqlite_generate_report(
     let (mut file_rep, mut ie_rep, mut act_rep) =
         init_reports(f, report_prod, &recovered_hostname, status_logger, None)?;
 
-    file_rep.start_file();
-    ie_rep.start_file();
-    act_rep.start_file();
 
     let mut idToProp = HashMap::<i64, (String, i64)>::new();
     let mut propNameToId = HashMap::<String, i64>::new();

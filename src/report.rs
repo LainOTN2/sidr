@@ -134,7 +134,7 @@ impl ReportProducer {
             ReportFormat::NoFormat => "",
         };
         let date_time_now: DateTime<Utc> = Utc::now();
-        let path = self.get_path_db_status(
+        let mut path = self.get_path_db_status(
             recovered_hostname,
             report_suffix,
             date_time_now,
@@ -145,6 +145,7 @@ impl ReportProducer {
         let report_suffix = ReportSuffix::get_match(report_suffix);
        
         let rep: Box<dyn Report> = if ReportOutput::ToDatabase == self.report_type {
+            path = PathBuf::new();
             ReportMSSQL::new(
                         table_name.as_str(),
                         self.instance.as_ref().unwrap(),
@@ -216,27 +217,30 @@ impl ReportJson {
         report_output: ReportOutput,
         report_suffix: Option<ReportSuffix>,
     ) -> Result<Self, SimpleError> {
-        match report_output {
-            ReportOutput::ToFile => {
-                let output: Box<dyn Write> =
-                    Box::new(File::create(path).map_err(|e| SimpleError::new(format!("{e}")))?);
-                Ok(ReportJson {
-                    f: output,
-                    report_output,
-                    report_suffix: None,
-                    values: RefCell::new(Vec::new()),
-                })
-            }
-            ReportOutput::ToStdout => Ok(ReportJson {
-                f: Box::new(BufWriter::new(io::stdout())),
-                report_output,
-                report_suffix,
-                values: RefCell::new(Vec::new()),
-            }),
-            ReportOutput::ToDatabase => Err(SimpleError::new(
-                "ReportOutput::ToDatabase is not supported for JSON format",
-            ))?,
-        }
+        let mut report = match report_output {
+                                ReportOutput::ToFile => {
+                                    let output: Box<dyn Write> =
+                                        Box::new(File::create(path).map_err(|e| SimpleError::new(format!("{e}")))?);
+                                    ReportJson {
+                                        f: output,
+                                        report_output,
+                                        report_suffix: None,
+                                        values: RefCell::new(Vec::new()),
+                                    }
+                                },
+                                ReportOutput::ToStdout => ReportJson {
+                                    f: Box::new(BufWriter::new(io::stdout())),
+                                    report_output,
+                                    report_suffix,
+                                    values: RefCell::new(Vec::new()),
+                                },
+                                ReportOutput::ToDatabase => Err(SimpleError::new(
+                                    "ReportOutput::ToDatabase is not supported for JSON format",
+                                ))?,
+         };
+
+         report.start_file();
+         Ok(report)
     }
 
     fn start_file(&mut self)
@@ -352,29 +356,33 @@ impl ReportCsv {
         report_output: ReportOutput,
         report_suffix: Option<ReportSuffix>,
     ) -> Result<Self, SimpleError> {
-        match report_output {
-            ReportOutput::ToFile => {
-                let output: Box<dyn Write> =
-                    Box::new(File::create(f).map_err(|e| SimpleError::new(format!("{e}")))?);
-                Ok(ReportCsv {
-                    f: output,
-                    report_output,
-                    report_suffix: None,
-                    first_record: Cell::new(true),
-                    values: RefCell::new(Vec::new()),
-                })
-            }
-            ReportOutput::ToStdout => Ok(ReportCsv {
-                f: Box::new(BufWriter::new(io::stdout())),
-                report_output,
-                report_suffix,
-                first_record: Cell::new(true),
-                values: RefCell::new(Vec::new()),
-            }),
-            ReportOutput::ToDatabase => Err(SimpleError::new(
-                "ReportOutput::ToDatabase is not supported for CSV format",
-            ))?,
-        }
+        let mut report = match report_output {
+                        ReportOutput::ToFile => {
+                            let output: Box<dyn Write> =
+                                Box::new(File::create(f).map_err(|e| SimpleError::new(format!("{e}")))?);
+                            ReportCsv {
+                                f: output,
+                                report_output,
+                                report_suffix: None,
+                                first_record: Cell::new(true),
+                                values: RefCell::new(Vec::new()),
+                            }
+                        }
+                        ReportOutput::ToStdout => ReportCsv {
+                            f: Box::new(BufWriter::new(io::stdout())),
+                            report_output,
+                            report_suffix,
+                            first_record: Cell::new(true),
+                            values: RefCell::new(Vec::new()),
+                        },
+                        ReportOutput::ToDatabase => Err(SimpleError::new(
+                            "ReportOutput::ToDatabase is not supported for CSV format",
+                        ))?,
+        };
+
+        report.start_file();
+
+        Ok(report)
     }
 
     fn escape(s: String) -> String {
